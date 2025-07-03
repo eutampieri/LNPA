@@ -87,3 +87,10 @@ do
 	done
 done
 
+ip netns exec H11 ping -c 4 10.0.1.2
+ip netns exec H11 ping -c 4 10.0.1.254
+ip netns exec H11 iperf3 -s &
+sleep 2
+ip netns exec H12 iperf3 -c 10.0.1.1 
+killall iperf3
+
