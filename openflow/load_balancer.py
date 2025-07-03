@@ -19,7 +19,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
-from ryu.lib.packet import ethernet, arp
+from ryu.lib.packet import ethernet, arp, ipv4
 from ryu.lib.packet import ether_types
 
 FRONTEND = ("10.0.0.103", "00:00:01:00:00:03", 8080)
@@ -140,7 +140,8 @@ class SimpleSwitch13(app_manager.RyuApp):
         actions = []
 
         # Load balancing
-        if dst == FRONTEND[1]:
+        if dst == FRONTEND[1] and eth.ethertype == ether_types.ETH_TYPE_IP:
+            ip_pkt = pkt.get_protocols(ipv4.ipv4)[0]
             # Change:
             # - DST IP
             # - DST MAC
@@ -152,18 +153,23 @@ class SimpleSwitch13(app_manager.RyuApp):
             actions.append(parser.OFPActionSetField(eth_dst=dst))
             actions.append(parser.OFPActionSetField(ipv4_dst=dst_ip))
 
-            sym_matcher = parser.OFPMatch(eth_src=dst, eth_dst=src)
-            sym_actions = [parser.OFPActionSetField(eth_src=FRONTEND[1]), parser.OFPActionSetField(ipv4_src=FRONTEND[0])]
-            self.add_flow(datapath, 10, sym_matcher, sym_actions)
-        else:
-            pass
-            # learn a mac address to avoid FLOOD next time.
-            self.mac_to_port[dpid][src] = in_port
+            sym_matcher = parser.OFPMatch(eth_src=dst, eth_dst=src, ipv4_dst=ip_pkt.src, ipv4_src=dst_ip)
+            sym_actions = [
+                    parser.OFPActionSetField(eth_src=FRONTEND[1]),
+                    parser.OFPActionSetField(ipv4_src=FRONTEND[0]),
+                    parser.OFPActionOutput(in_port),
+            ]
+            self.add_flow(datapath, 20, sym_matcher, sym_actions)
+            print(sym_matcher)
+            
+        #else:
+        # learn a mac address to avoid FLOOD next time.
+        self.mac_to_port[dpid][src] = in_port
 
-            if dst in self.mac_to_port[dpid]:
-                out_port = self.mac_to_port[dpid][dst]
-            else:
-                out_port = ofproto.OFPP_FLOOD
+        if dst in self.mac_to_port[dpid]:
+            out_port = self.mac_to_port[dpid][dst]
+        else:
+            out_port = ofproto.OFPP_FLOOD
 
         actions.append(parser.OFPActionOutput(out_port))
 
@@ -173,10 +179,12 @@ class SimpleSwitch13(app_manager.RyuApp):
             # verify if we have a valid buffer_id, if yes avoid to send both
             # flow_mod & packet_out
             if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                self.add_flow(datapath, 2, match, actions, msg.buffer_id)
-                return
+                #self.add_flow(datapath, 2, match, actions, msg.buffer_id)
+                #return
+                pass
             else:
-                self.add_flow(datapath, 2, match, actions)
+                pass
+                #self.add_flow(datapath, 2, match, actions)
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
